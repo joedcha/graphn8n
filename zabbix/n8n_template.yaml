@@ -1,0 +1,116 @@
+# Plantilla de Zabbix para el monitoreo de n8n via n8n-zabbix-bridge.
+#
+# IMPORTANTE: este archivo se escribio a mano siguiendo el esquema de
+# exportacion YAML de plantillas de Zabbix 6.0, pero no se pudo probar un
+# import real contra un Zabbix (este entorno no tiene acceso a la red
+# interna). Antes de usarlo en produccion:
+#   1. Importar en un Zabbix de prueba (Data collection > Templates > Import).
+#   2. Si el import falla, Zabbix va a indicar la linea/campo con problema:
+#      son ajustes menores de sintaxis, no de diseno.
+#   3. Crear un host (por ejemplo "n8n-telefonica", debe coincidir con
+#      ZABBIX_HOST_NAME en bridge/.env) y asociarle esta plantilla.
+#
+# Los items base (no descubiertos) se alimentan del workflow de gobernanza.
+# La regla de discovery se alimenta del modulo discovery.js del bridge y
+# crea automaticamente items/triggers por cada workflow de n8n.
+
+zabbix_export:
+  version: '6.0'
+  template_groups:
+    - uuid: a1b2c3d4e5f6470a8b9c0d1e2f3a4b5c
+      name: Templates/Applications
+  templates:
+    - uuid: b2c3d4e5f6470a8b9c0d1e2f3a4b5c6d
+      template: 'Template App n8n Bridge'
+      name: 'Template App n8n Bridge'
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: c3d4e5f6470a8b9c0d1e2f3a4b5c6d7e
+          name: 'n8n - ratio de cumplimiento de gobernanza'
+          type: TRAP
+          key: n8n.governance.compliance_ratio
+          value_type: FLOAT
+          history: 90d
+          trends: 365d
+          description: 'Porcentaje de workflows activos que cumplen la convencion (Error Workflow + tags team/criticidad).'
+        - uuid: d4e5f6470a8b9c0d1e2f3a4b5c6d7e8f
+          name: 'n8n - workflows no conformes (detalle JSON)'
+          type: TRAP
+          key: n8n.governance.non_compliant
+          value_type: TEXT
+          history: 30d
+      triggers:
+        - uuid: e5f6470a8b9c0d1e2f3a4b5c6d7e8f90
+          name: 'n8n: cumplimiento de gobernanza por debajo del umbral'
+          expression: 'last(/Template App n8n Bridge/n8n.governance.compliance_ratio)<{$N8N.GOVERNANCE.MIN_RATIO}'
+          priority: WARNING
+      discovery_rules:
+        - uuid: f6470a8b9c0d1e2f3a4b5c6d7e8f9012
+          name: 'n8n - descubrimiento de workflows'
+          type: TRAP
+          key: n8n.workflow.discovery
+          lifetime: 30d
+          item_prototypes:
+            - uuid: 470a8b9c0d1e2f3a4b5c6d7e8f901234
+              name: 'Workflow {#WORKFLOW_NAME} - duracion ultima ejecucion'
+              type: TRAP
+              key: 'n8n.workflow.duration.last[{#WORKFLOW_ID}]'
+              value_type: UNSIGNED
+              units: ms
+              history: 90d
+              trends: 365d
+              tags:
+                - tag: team
+                  value: '{#TEAM}'
+                - tag: criticidad
+                  value: '{#CRITICALITY}'
+            - uuid: 80a8b9c0d1e2f3a4b5c6d7e8f9012345
+              name: 'Workflow {#WORKFLOW_NAME} - estado ultima ejecucion'
+              type: TRAP
+              key: 'n8n.workflow.status.last[{#WORKFLOW_ID}]'
+              value_type: UNSIGNED
+              valuemap:
+                name: 'n8n execution status'
+              history: 90d
+            - uuid: 90a8b9c0d1e2f3a4b5c6d7e8f9012346
+              name: 'Workflow {#WORKFLOW_NAME} - tiempos por nodo (JSON)'
+              type: TRAP
+              key: 'n8n.workflow.nodes.timing[{#WORKFLOW_ID}]'
+              value_type: TEXT
+              history: 30d
+            - uuid: a0a8b9c0d1e2f3a4b5c6d7e8f9012347
+              name: 'Workflow {#WORKFLOW_NAME} - ultimo error (JSON)'
+              type: TRAP
+              key: 'n8n.workflow.error.last[{#WORKFLOW_ID}]'
+              value_type: TEXT
+              history: 30d
+          trigger_prototypes:
+            - uuid: b0a8b9c0d1e2f3a4b5c6d7e8f9012348
+              name: 'Workflow {#WORKFLOW_NAME}: fallo en la ultima ejecucion'
+              expression: 'last(/Template App n8n Bridge/n8n.workflow.status.last[{#WORKFLOW_ID}])=1'
+              priority: HIGH
+            - uuid: c0a8b9c0d1e2f3a4b5c6d7e8f9012349
+              name: 'Workflow {#WORKFLOW_NAME}: duracion por encima del SLO'
+              expression: 'last(/Template App n8n Bridge/n8n.workflow.duration.last[{#WORKFLOW_ID}])>{$N8N.DURATION.SLO.MS}'
+              priority: WARNING
+            - uuid: d0a8b9c0d1e2f3a4b5c6d7e8f9012350
+              name: 'Workflow {#WORKFLOW_NAME}: sin ejecuciones recientes (heartbeat)'
+              expression: 'nodata(/Template App n8n Bridge/n8n.workflow.duration.last[{#WORKFLOW_ID}],{$N8N.HEARTBEAT.WINDOW})=1'
+              priority: AVERAGE
+      macros:
+        - macro: '{$N8N.DURATION.SLO.MS}'
+          value: '60000'
+          description: 'Umbral de duracion (ms) por encima del cual se considera SLO incumplido. Ajustar por workflow si hace falta sobreescribiendolo a nivel host.'
+        - macro: '{$N8N.HEARTBEAT.WINDOW}'
+          value: '1d'
+          description: 'Ventana sin datos que dispara la alerta de heartbeat.'
+        - macro: '{$N8N.GOVERNANCE.MIN_RATIO}'
+          value: '0.9'
+      valuemaps:
+        - name: 'n8n execution status'
+          mappings:
+            - value: '0'
+              newvalue: success
+            - value: '1'
+              newvalue: error

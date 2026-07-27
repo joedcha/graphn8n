@@ -1,0 +1,15 @@
+{
+  "name": "n8n-zabbix-bridge",
+  "version": "0.1.0",
+  "description": "Puente entre la API de n8n y Zabbix: descubre workflows, extrae tiempos por ejecucion/nodo y audita gobernanza de monitoreo.",
+  "private": true,
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {}
+}
