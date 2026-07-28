@@ -6,7 +6,7 @@ Servicio que conecta la API de n8n (Community Edition) con Zabbix:
 - **Executions** (`src/executions.js`): hace polling de ejecuciones terminadas, extrae la duración total y el tiempo por nodo (`resultData.runData`), y los envía a Zabbix.
 - **Governance** (`src/governance.js`): audita qué workflows activos no siguen la convención (Error Workflow asignado, tags `team:`/`criticidad:`) y publica el ratio de cumplimiento.
 
-Sin dependencias externas: usa `fetch` nativo de Node y el protocolo Zabbix Sender implementado a mano en `src/zabbixSender.js` (no requiere el binario `zabbix_sender`).
+Sin dependencias npm externas: usa `fetch` nativo de Node para hablar con n8n. Para Zabbix, `src/zabbixSender.js` **no** reimplementa el protocolo trapper — genera un archivo temporal con el mismo formato que usa `-i archivo -T` y llama al binario `zabbix_sender` ya instalado en el servidor (el mismo mecanismo que ya usan para cargar otras métricas), en vez de agregar una implementación propia sin probar contra el Zabbix real.
 
 ## Estado de este código
 
@@ -23,7 +23,7 @@ Fue escrito sin acceso de red al n8n real ni al Zabbix real (el entorno donde se
 
 ## Conectar con Zabbix
 
-1. Completar `ZABBIX_SERVER_HOST` (host/IP del Zabbix Server o Proxy, **no** el frontend web) y `ZABBIX_HOST_NAME` (el nombre exacto del host de Zabbix que va a recibir estos datos).
+1. Completar `ZABBIX_SERVER_HOST` (host/IP del Zabbix Server o Proxy, **no** el frontend web), `ZABBIX_SENDER_BIN` (ruta al binario `zabbix_sender` en ese servidor) y `ZABBIX_HOST_NAME` (el nombre exacto del host de Zabbix que va a recibir estos datos).
 2. Importar `../zabbix/n8n_template.yaml` en Zabbix (Data collection → Templates → Import). Revisar los macros `{$N8N.DURATION.SLO.MS}`, `{$N8N.HEARTBEAT.WINDOW}`, `{$N8N.GOVERNANCE.MIN_RATIO}`.
 3. Crear (o editar) el host de Zabbix con el nombre igual a `ZABBIX_HOST_NAME`, y asociarle la plantilla `Template App n8n Bridge`.
 4. Poner `DRY_RUN=false` y correr de nuevo. Verificar en Zabbix (Monitoring → Latest data) que empiecen a aparecer los items descubiertos por workflow.

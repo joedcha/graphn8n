@@ -42,7 +42,12 @@ async function runGovernanceAudit({ zabbixHost, zabbixConfig }) {
     },
   ];
 
-  await sendToZabbix({ host: zabbixConfig.host, port: zabbixConfig.port, items });
+  await sendToZabbix({
+    host: zabbixConfig.host,
+    port: zabbixConfig.port,
+    binPath: zabbixConfig.binPath,
+    items,
+  });
 
   return { activeCount: active.length, nonCompliantCount: nonCompliant.length, ratio };
 }

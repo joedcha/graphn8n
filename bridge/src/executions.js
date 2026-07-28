@@ -147,7 +147,12 @@ async function processExecutions({ zabbixHost, zabbixConfig, criticalWorkflowIds
   } while (cursor);
 
   if (items.length) {
-    await sendToZabbix({ host: zabbixConfig.host, port: zabbixConfig.port, items });
+    await sendToZabbix({
+      host: zabbixConfig.host,
+      port: zabbixConfig.port,
+      binPath: zabbixConfig.binPath,
+      items,
+    });
   }
   if (newestId && newestId !== lastId) {
     saveState({ lastExecutionId: newestId });

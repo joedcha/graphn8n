@@ -16,6 +16,7 @@ function loadConfig() {
     zabbixConfig: {
       host: process.env.ZABBIX_SERVER_HOST,
       port: Number(process.env.ZABBIX_SERVER_PORT || 10051),
+      binPath: process.env.ZABBIX_SENDER_BIN || '/usr/bin/zabbix_sender',
     },
     criticalTag: process.env.CRITICAL_TAG || 'criticidad:alta',
     discoveryIntervalMs: Number(process.env.DISCOVERY_INTERVAL_MS || 5 * 60 * 1000),

@@ -26,6 +26,7 @@ async function runDiscovery({ zabbixHost, zabbixConfig }) {
   await sendToZabbix({
     host: zabbixConfig.host,
     port: zabbixConfig.port,
+    binPath: zabbixConfig.binPath,
     items: [
       {
         host: zabbixHost,
