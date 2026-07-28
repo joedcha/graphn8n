@@ -141,9 +141,17 @@ async function processExecutions({ zabbixHost, zabbixConfig, criticalWorkflowIds
     }
 
     cursor = page.nextCursor || undefined;
+
+    if (!lastId) {
+      // Primera corrida (sin checkpoint todavia): solo se procesa la
+      // primera pagina (las ejecuciones mas recientes) para no traer todo
+      // el historico de la instancia. A partir de la proxima corrida ya
+      // queda un checkpoint y se sigue de forma incremental.
+      break;
+    }
     // Si ya llegamos a ejecuciones anteriores al checkpoint, no hace falta
     // seguir paginando hacia atras.
-    if (lastId && batch.some((e) => Number(e.id) <= lastId)) break;
+    if (batch.some((e) => Number(e.id) <= lastId)) break;
   } while (cursor);
 
   if (items.length) {

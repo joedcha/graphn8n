@@ -1,8 +1,31 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
 const { runDiscovery } = require('./discovery');
 const { processExecutions } = require('./executions');
 const { runGovernanceAudit } = require('./governance');
+
+// Carga simple de .env (sin dependencias npm): no pisa variables que ya
+// esten seteadas en el entorno (por ejemplo, si se corre con docker --env-file).
+function loadDotEnv(file = path.join(__dirname, '..', '.env')) {
+  if (!fs.existsSync(file)) return;
+  for (const rawLine of fs.readFileSync(file, 'utf8').split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadDotEnv();
 
 function loadConfig() {
   const required = ['N8N_BASE_URL', 'N8N_API_KEY', 'ZABBIX_SERVER_HOST'];
