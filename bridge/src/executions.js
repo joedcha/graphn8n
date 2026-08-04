@@ -11,9 +11,10 @@ function stateFile() {
 
 function loadState() {
   try {
-    return JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
+    const state = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
+    return { lastExecutionId: null, criticalNodes: {}, ...state };
   } catch {
-    return { lastExecutionId: null };
+    return { lastExecutionId: null, criticalNodes: {} };
   }
 }
 
@@ -113,13 +114,17 @@ async function processExecutions({ zabbixHost, zabbixConfig, criticalWorkflowIds
         });
 
         if (criticalWorkflowIds.has(String(full.workflowId))) {
+          const wfId = String(full.workflowId);
+          const known = new Set(state.criticalNodes[wfId] || []);
           for (const nt of nodeTimings) {
             items.push({
               host: zabbixHost,
               key: `n8n.node.duration[${full.workflowId},${nt.node}]`,
               value: nt.ms ?? 0,
             });
+            known.add(nt.node);
           }
+          state.criticalNodes[wfId] = Array.from(known);
         }
       }
 
@@ -154,6 +159,26 @@ async function processExecutions({ zabbixHost, zabbixConfig, criticalWorkflowIds
     if (batch.some((e) => Number(e.id) <= lastId)) break;
   } while (cursor);
 
+  // Reenviar en cada tick el set completo de nodos conocidos por workflow
+  // critico (no solo los vistos en esta corrida) para que Zabbix no marque
+  // como "perdidos" los items de nodos ya descubiertos cuando un workflow
+  // no tuvo ejecuciones nuevas en este ciclo. Ver n8n.node.discovery en el
+  // template (segundo nivel de LLD).
+  const nodeDiscoveryData = [];
+  for (const [workflowId, nodes] of Object.entries(state.criticalNodes)) {
+    if (!criticalWorkflowIds.has(workflowId)) continue;
+    for (const nodeName of nodes) {
+      nodeDiscoveryData.push({ '{#WORKFLOW_ID}': workflowId, '{#NODE_NAME}': nodeName });
+    }
+  }
+  if (nodeDiscoveryData.length) {
+    items.push({
+      host: zabbixHost,
+      key: 'n8n.node.discovery',
+      value: JSON.stringify({ data: nodeDiscoveryData }),
+    });
+  }
+
   if (items.length) {
     await sendToZabbix({
       host: zabbixConfig.host,
@@ -162,8 +187,8 @@ async function processExecutions({ zabbixHost, zabbixConfig, criticalWorkflowIds
       items,
     });
   }
-  if (newestId && newestId !== lastId) {
-    saveState({ lastExecutionId: newestId });
+  if ((newestId && newestId !== lastId) || Object.keys(state.criticalNodes).length) {
+    saveState({ lastExecutionId: newestId ?? lastId, criticalNodes: state.criticalNodes });
   }
 
   return { processedCount };
