@@ -107,7 +107,7 @@ zabbix_export:
             y reenvia el set completo conocido en cada tick.
           item_prototypes:
             - uuid: cc8dc00ae1ce4c7bb62845ff5008228b
-              name: 'Workflow {#WORKFLOW_ID} - nodo {#NODE_NAME} - duracion'
+              name: 'Workflow {#WORKFLOW_NAME} - nodo {#NODE_NAME} - duracion'
               type: TRAP
               key: 'n8n.node.duration[{#WORKFLOW_ID},{#NODE_NAME}]'
               value_type: UNSIGNED

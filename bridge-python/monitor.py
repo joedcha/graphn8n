@@ -66,9 +66,15 @@ def load_critical_ids():
     return set(state.get('criticalWorkflowIds', []))
 
 
-def save_critical_ids(ids):
+def save_critical_workflows(names_by_id):
+    # names_by_id: { workflow_id (str): workflow_name (str) }. Se guardan
+    # ambos -- el set de ids (que ya usaba executions.py para el filtro
+    # ONLY_CRITICAL) y ahora tambien los nombres, para que el LLD de nodos
+    # (n8n.node.discovery) pueda publicar {#WORKFLOW_NAME} y no solo el id
+    # crudo en el nombre de los items en Zabbix.
     state = executions.load_state()
-    state['criticalWorkflowIds'] = sorted(ids)
+    state['criticalWorkflowIds'] = sorted(names_by_id.keys())
+    state['criticalWorkflowNames'] = names_by_id
     executions.save_state(state)
 
 
@@ -77,12 +83,13 @@ def tick_discovery(config):
         only_tag = config['criticalTag'] if config['onlyCritical'] else None
         workflows = discovery.run_discovery(
             config['zabbixHost'], config['zabbixConfig'], only_tag, config['defaultSloMs'])
-        critical_ids = {
-            str(wf['id'])
+        critical_names = {
+            str(wf['id']): wf.get('name') or str(wf['id'])
             for wf in workflows
             if any(t.get('name') == config['criticalTag'] for t in (wf.get('tags') or []))
         }
-        save_critical_ids(critical_ids)
+        save_critical_workflows(critical_names)
+        critical_ids = set(critical_names.keys())
         print('[discovery] {} workflows ({} criticos){}'.format(
             len(workflows), len(critical_ids), ' [ONLY_CRITICAL]' if config['onlyCritical'] else ''))
         return critical_ids

@@ -21,7 +21,7 @@ def load_state():
             state = json.load(f)
     except (OSError, ValueError):
         state = {}
-    return {'lastExecutionId': None, 'criticalNodes': {}, **state}
+    return {'lastExecutionId': None, 'criticalNodes': {}, 'criticalWorkflowNames': {}, **state}
 
 
 def save_state(state):
@@ -243,8 +243,13 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
     # workflow critico (no solo los vistos ahora) para que Zabbix no marque
     # como "perdidos" los items ya descubiertos cuando un workflow no tuvo
     # ejecuciones nuevas en este ciclo. Ver n8n.node.discovery en el template.
+    workflow_names = state.get('criticalWorkflowNames', {})
     node_discovery_data = [
-        {'{#WORKFLOW_ID}': workflow_id, '{#NODE_NAME}': node_name}
+        {
+            '{#WORKFLOW_ID}': workflow_id,
+            '{#NODE_NAME}': node_name,
+            '{#WORKFLOW_NAME}': workflow_names.get(workflow_id, workflow_id),
+        }
         for workflow_id, nodes in state['criticalNodes'].items()
         if workflow_id in critical_workflow_ids
         for node_name in nodes
