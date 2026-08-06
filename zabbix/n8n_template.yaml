@@ -40,6 +40,76 @@ zabbix_export:
           key: n8n.governance.non_compliant
           value_type: TEXT
           history: 30d
+        - uuid: 356288407e844b67b113a528f76d7a3f
+          name: 'n8n - capacidad: ejecuciones totales (todos los workflows)'
+          type: TRAP
+          key: n8n.capacity.executions.total
+          value_type: UNSIGNED
+          history: 90d
+          trends: 365d
+          description: 'Ejecuciones nuevas de TODOS los workflows desde el ultimo tick de capacity.py (no solo los criticos/tageados). Ver bridge-python/capacity.py.'
+        - uuid: 6438fd4c75094fdeb0c0e061a5bf2c9b
+          name: 'n8n - capacidad: ejecuciones con error'
+          type: TRAP
+          key: n8n.capacity.executions.errors
+          value_type: UNSIGNED
+          history: 90d
+          trends: 365d
+        - uuid: 4ba78463b9434b0f8fc10a8d12a63fa6
+          name: 'n8n - capacidad: tasa de error (%)'
+          type: TRAP
+          key: n8n.capacity.executions.error_rate
+          value_type: FLOAT
+          units: '%'
+          history: 90d
+          trends: 365d
+        - uuid: a193ae0fd7c54a048f49d92bcd3306ea
+          name: 'n8n - capacidad: workflows con actividad'
+          type: TRAP
+          key: n8n.capacity.executions.active_workflows
+          value_type: UNSIGNED
+          history: 90d
+          trends: 365d
+          description: 'Cantidad de workflows distintos con al menos una ejecucion nueva en este tick.'
+        - uuid: 09484ff0c81d4733ae1399a4be791135
+          name: 'n8n - capacidad: duracion promedio (ms)'
+          type: TRAP
+          key: n8n.capacity.duration.avg_ms
+          value_type: UNSIGNED
+          units: ms
+          history: 90d
+          trends: 365d
+          description: 'Duracion cruda (stoppedAt-startedAt del resumen de /executions, sin reconstruccion por nodos Wait) -- aproximacion agregada, no exacta por workflow. Ver capacity.py.'
+        - uuid: c087680b0db34c76bd307a3edeb2fce4
+          name: 'n8n - capacidad: duracion p95 (ms)'
+          type: TRAP
+          key: n8n.capacity.duration.p95_ms
+          value_type: UNSIGNED
+          units: ms
+          history: 90d
+          trends: 365d
+        - uuid: a80b68da11c34d87b082675fd3f33493
+          name: 'n8n - capacidad: workflows totales (inventario)'
+          type: TRAP
+          key: n8n.capacity.workflows.total
+          value_type: UNSIGNED
+          history: 90d
+          trends: 365d
+          description: 'Cantidad total de workflows en la instancia de n8n, activos e inactivos. Ver bridge-python/capacity.py.'
+        - uuid: e3c4030d3c264e0292e9e37261fd0330
+          name: 'n8n - capacidad: workflows activos'
+          type: TRAP
+          key: n8n.capacity.workflows.active
+          value_type: UNSIGNED
+          history: 90d
+          trends: 365d
+        - uuid: 399d3478de6e468c9e25f42c37e19e5f
+          name: 'n8n - capacidad: workflows inactivos'
+          type: TRAP
+          key: n8n.capacity.workflows.inactive
+          value_type: UNSIGNED
+          history: 90d
+          trends: 365d
       discovery_rules:
         - uuid: 9a5f7082676e436489cf5a823456b129
           name: 'n8n - descubrimiento de workflows'

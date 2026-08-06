@@ -19,14 +19,17 @@ Same responsibilities as the Node version (discovery/executions/governance again
 
 ### Layout and deployment
 
-- `monitor.py` — entrypoint, `--mode {discovery,executions,governance,all}`. `--mode all` runs all three in one process (used for manual/dry-run testing); the real cron uses the three separately.
+- `monitor.py` — entrypoint, `--mode {discovery,executions,governance,capacity,all}`. `--mode all` runs all four in one process (used for manual/dry-run testing); the real cron uses them separately.
 - `discovery.py`, `executions.py`, `governance.py`, `n8n_client.py`, `zabbix_sender.py` — 1:1 ports of the Node modules, plus the fixes below.
-- `run_discovery.sh`, `run_executions.sh`, `run_governance.sh` — cron wrappers matching the host's existing ETL script convention (header block, `logsh.txt` logging, `date` stamps). Cron:
+- `capacity.py` — aggregate capacity metrics (execution volume/errors/duration avg+p95, workflow inventory) across **all** n8n workflows, not just the critical/tagged subset `executions.py` covers. Deliberately separate and coarse-grained (a handful of aggregate items, not per-workflow) so it can cover all 341 workflows without exploding Zabbix item/NVPS volume the way per-workflow tracking would. Uses only the `/executions` summary (never `get_execution()`), so duration is raw `stoppedAt-startedAt`, not the Wait-node-aware reconstruction `executions.py` does — acceptable for an aggregate "how much load today" view, not for per-workflow accuracy. Own state file (`CAPACITY_STATE_FILE`, default `./capacity_state.json`) and own lock (`.capacity.lock`, not shared with discovery/executions' `.state.lock`), same independence pattern as `governance.py`.
+- `capacity_snapshot.py` — one-off manual analysis script (not part of the cron rotation), pages n8n's real execution history and buckets volume/errors/duration by hour, for a first look at historical load without waiting for `capacity.py` to accumulate data over time.
+- `run_discovery.sh`, `run_executions.sh`, `run_governance.sh`, `run_capacity.sh` — cron wrappers matching the host's existing ETL script convention (header block, `logsh.txt` logging, `date` stamps). Cron:
   ```
   */5 * * * * /opt/bmc/ETLs/n8n/monworkflows/run_discovery.sh
   * * * * *   /opt/bmc/ETLs/n8n/monworkflows/run_executions.sh
   0 * * * *   /opt/bmc/ETLs/n8n/monworkflows/run_governance.sh
   ```
+  `run_capacity.sh` exists and works standalone (`--mode capacity`) but is not yet in the crontab above — add a line for it when ready to schedule it.
 - `.env` (chmod 600, never commit) / `.env.example` — same variables as `bridge/.env.example` plus two new ones (see "Pilot mode" and "Per-workflow SLO" below). No `*_INTERVAL_MS` vars — cadence is the crontab, not the script.
 - `python/` on the server — the copied portable interpreter. Not present in this repo (618MB, and `.gitignore`d) — if redeploying from scratch, `cp -r /opt/bmc/ETLs/loadrancher/python <this-dir>/python` on the target host.
 

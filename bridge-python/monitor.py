@@ -22,6 +22,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import capacity  # noqa: E402
 import discovery  # noqa: E402
 import executions  # noqa: E402
 import governance  # noqa: E402
@@ -119,9 +120,21 @@ def tick_governance(config):
         print('[governance] error: {}'.format(e), file=sys.stderr)
 
 
+def tick_capacity(config):
+    try:
+        result = capacity.process_capacity(config['zabbixHost'], config['zabbixConfig'])
+        print('[capacity] {} ejecuciones ({} errores, {} workflows activos), '
+              'duracion prom={}ms p95={}ms'.format(
+                  result['total'], result['errors'], result['activeWorkflows'],
+                  result['avgDurationMs'], result['p95DurationMs']))
+    except Exception as e:
+        print('[capacity] error: {}'.format(e), file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Monitoreo de n8n hacia Zabbix (una pasada por invocacion).')
-    parser.add_argument('--mode', choices=['discovery', 'executions', 'governance', 'all'], default='all')
+    parser.add_argument(
+        '--mode', choices=['discovery', 'executions', 'governance', 'capacity', 'all'], default='all')
     args = parser.parse_args()
 
     load_dotenv()
@@ -136,10 +149,13 @@ def main():
         tick_executions(config)
     elif args.mode == 'governance':
         tick_governance(config)
+    elif args.mode == 'capacity':
+        tick_capacity(config)
     else:
         critical_ids = tick_discovery(config)
         tick_executions(config, critical_ids)
         tick_governance(config)
+        tick_capacity(config)
 
 
 if __name__ == '__main__':
