@@ -21,10 +21,18 @@ def _quote_field(value):
     # \n o \r literal dentro de un valor rompe el registro y hace fallar el
     # envio completo (todos los items del batch, no solo el problematico).
     # Se reemplaza por un espacio como salvaguarda -- los llamadores no
-    # deberian mandar valores multilinea a proposito (ver capacity.py).
+    # deberian mandar valores multilinea reales a proposito (ver capacity.py,
+    # que en cambio usa la secuencia de escape de 2 caracteres "\n" literal,
+    # que Zabbix SI convierte a salto de linea real al guardar el item).
     s = str(value).replace('\r\n', ' ').replace('\n', ' ').replace('\r', ' ')
     if s == '' or re.search(r'[\s"]', s):
-        return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
+        # Duplicar cada backslash protege contra que Zabbix interprete un
+        # backslash "de verdad" (parte del dato) como el inicio de un
+        # escape -- EXCEPTO cuando ya es la secuencia intencional \n o \r
+        # (ver arriba), que debe llegar intacta (un solo backslash) para
+        # que Zabbix la convierta en salto de linea real.
+        s = re.sub(r'\\(?![nr])', r'\\\\', s)
+        return '"' + s.replace('"', '\\"') + '"'
     return s
 
 
