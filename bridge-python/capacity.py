@@ -148,10 +148,13 @@ def process_capacity(zabbix_host, zabbix_config):
     workflows_active = len(active_workflows_list)
     workflows_inactive = len(inactive_workflows_list)
 
-    def _names_json(workflows):
-        return json.dumps(
-            [{'id': wf.get('id'), 'name': wf.get('name')} for wf in workflows], ensure_ascii=False
-        )
+    # Texto plano (una linea por workflow: "nombre  (id)"), no JSON -- pensado
+    # para leerse directo en una tabla de Grafana sin parseo/transformaciones
+    # adicionales. Ver "Capacidad: listado de workflows ..." en el dashboard.
+    def _names_text(workflows):
+        return '\n'.join('{}  ({})'.format(wf.get('name'), wf.get('id')) for wf in workflows)
+
+    all_sorted = sorted(all_workflows, key=lambda wf: (wf.get('name') or '').lower())
 
     items = [
         {'host': zabbix_host, 'key': 'n8n.capacity.workflows.total', 'value': workflows_total},
@@ -160,22 +163,19 @@ def process_capacity(zabbix_host, zabbix_config):
         {
             'host': zabbix_host,
             'key': 'n8n.capacity.workflows.active_names',
-            'value': _names_json(active_workflows_list),
+            'value': _names_text(active_workflows_list),
         },
         {
             'host': zabbix_host,
             'key': 'n8n.capacity.workflows.inactive_names',
-            'value': _names_json(inactive_workflows_list),
+            'value': _names_text(inactive_workflows_list),
         },
         {
             'host': zabbix_host,
             'key': 'n8n.capacity.workflows.all_names',
-            'value': json.dumps(
-                [
-                    {'id': wf.get('id'), 'name': wf.get('name'), 'active': bool(wf.get('active'))}
-                    for wf in sorted(all_workflows, key=lambda wf: (wf.get('name') or '').lower())
-                ],
-                ensure_ascii=False,
+            'value': '\n'.join(
+                '{}  ({})  {}'.format(wf.get('name'), wf.get('id'), 'activo' if wf.get('active') else 'inactivo')
+                for wf in all_sorted
             ),
         },
         {'host': zabbix_host, 'key': 'n8n.capacity.executions.total', 'value': total},
