@@ -148,11 +148,14 @@ def process_capacity(zabbix_host, zabbix_config):
     workflows_active = len(active_workflows_list)
     workflows_inactive = len(inactive_workflows_list)
 
-    # Texto plano (una linea por workflow: "nombre  (id)"), no JSON -- pensado
-    # para leerse directo en una tabla de Grafana sin parseo/transformaciones
-    # adicionales. Ver "Capacidad: listado de workflows ..." en el dashboard.
+    # Texto plano ("nombre (id) | nombre (id) | ..."), no JSON -- pensado para
+    # leerse directo en una tabla de Grafana sin parseo/transformaciones
+    # adicionales. Separado por " | " y no por saltos de linea reales: el
+    # formato de archivo de zabbix_sender (-i archivo) es por-linea, un valor
+    # con \n literal rompe el registro y zabbix_sender falla con
+    # "'Key value' required" -- confirmado probando contra Zabbix real.
     def _names_text(workflows):
-        return '\n'.join('{}  ({})'.format(wf.get('name'), wf.get('id')) for wf in workflows)
+        return ' | '.join('{} ({})'.format(wf.get('name'), wf.get('id')) for wf in workflows)
 
     all_sorted = sorted(all_workflows, key=lambda wf: (wf.get('name') or '').lower())
 
@@ -173,8 +176,8 @@ def process_capacity(zabbix_host, zabbix_config):
         {
             'host': zabbix_host,
             'key': 'n8n.capacity.workflows.all_names',
-            'value': '\n'.join(
-                '{}  ({})  {}'.format(wf.get('name'), wf.get('id'), 'activo' if wf.get('active') else 'inactivo')
+            'value': ' | '.join(
+                '{} ({}) [{}]'.format(wf.get('name'), wf.get('id'), 'activo' if wf.get('active') else 'inactivo')
                 for wf in all_sorted
             ),
         },

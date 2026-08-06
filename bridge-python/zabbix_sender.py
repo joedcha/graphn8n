@@ -17,7 +17,12 @@ import uuid
 
 
 def _quote_field(value):
-    s = str(value)
+    # El formato de archivo de zabbix_sender (-i archivo) es por-linea: un
+    # \n o \r literal dentro de un valor rompe el registro y hace fallar el
+    # envio completo (todos los items del batch, no solo el problematico).
+    # Se reemplaza por un espacio como salvaguarda -- los llamadores no
+    # deberian mandar valores multilinea a proposito (ver capacity.py).
+    s = str(value).replace('\r\n', ' ').replace('\n', ' ').replace('\r', ' ')
     if s == '' or re.search(r'[\s"]', s):
         return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
     return s
