@@ -148,14 +148,19 @@ def process_capacity(zabbix_host, zabbix_config):
     workflows_active = len(active_workflows_list)
     workflows_inactive = len(inactive_workflows_list)
 
-    # Texto plano ("nombre (id) | nombre (id) | ..."), no JSON -- pensado para
-    # leerse directo en una tabla de Grafana sin parseo/transformaciones
-    # adicionales. Separado por " | " y no por saltos de linea reales: el
-    # formato de archivo de zabbix_sender (-i archivo) es por-linea, un valor
-    # con \n literal rompe el registro y zabbix_sender falla con
-    # "'Key value' required" -- confirmado probando contra Zabbix real.
+    # Texto plano, un workflow por linea ("nombre (id)"), no JSON. El
+    # separador es la secuencia de escape de 2 caracteres "\n" (backslash +
+    # n), NO un salto de linea real: el formato de archivo de zabbix_sender
+    # (-i archivo) es por-linea, un valor con salto de linea real dentro
+    # rompe el registro a la mitad y zabbix_sender falla con "'Key value'
+    # required". Confirmado contra Zabbix real que la secuencia "\n" SI se
+    # convierte a salto de linea real al guardarse el item -- por eso se
+    # ve como texto plano multilinea en Grafana (con "Wrap text" activado
+    # en el panel) sin romper el envio.
+    NEWLINE_ESCAPE = '\\n'
+
     def _names_text(workflows):
-        return ' | '.join('{} ({})'.format(wf.get('name'), wf.get('id')) for wf in workflows)
+        return NEWLINE_ESCAPE.join('{} ({})'.format(wf.get('name'), wf.get('id')) for wf in workflows)
 
     all_sorted = sorted(all_workflows, key=lambda wf: (wf.get('name') or '').lower())
 
@@ -176,7 +181,7 @@ def process_capacity(zabbix_host, zabbix_config):
         {
             'host': zabbix_host,
             'key': 'n8n.capacity.workflows.all_names',
-            'value': ' | '.join(
+            'value': NEWLINE_ESCAPE.join(
                 '{} ({}) [{}]'.format(wf.get('name'), wf.get('id'), 'activo' if wf.get('active') else 'inactivo')
                 for wf in all_sorted
             ),
