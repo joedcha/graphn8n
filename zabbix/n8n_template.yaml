@@ -110,6 +110,27 @@ zabbix_export:
           value_type: UNSIGNED
           history: 90d
           trends: 365d
+        - uuid: 91eae30edafa4916ae7aa7111b2f63be
+          name: 'n8n - capacidad: listado workflows activos (JSON)'
+          type: TRAP
+          key: n8n.capacity.workflows.active_names
+          value_type: TEXT
+          history: 14d
+          description: 'Array JSON [{id, name}] de los workflows activos, ordenado por nombre. Ver bridge-python/capacity.py.'
+        - uuid: c41d1d02a42d45858fd7fefd3a2a3023
+          name: 'n8n - capacidad: listado workflows inactivos (JSON)'
+          type: TRAP
+          key: n8n.capacity.workflows.inactive_names
+          value_type: TEXT
+          history: 14d
+          description: 'Array JSON [{id, name}] de los workflows inactivos, ordenado por nombre. Ver bridge-python/capacity.py.'
+        - uuid: c9166d96ff0140b3915557438421e2b5
+          name: 'n8n - capacidad: listado todos los workflows (JSON)'
+          type: TRAP
+          key: n8n.capacity.workflows.all_names
+          value_type: TEXT
+          history: 14d
+          description: 'Array JSON [{id, name, active}] de todos los workflows (341), ordenado por nombre. Ver bridge-python/capacity.py.'
       discovery_rules:
         - uuid: 9a5f7082676e436489cf5a823456b129
           name: 'n8n - descubrimiento de workflows'
