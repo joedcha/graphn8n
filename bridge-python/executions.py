@@ -21,7 +21,43 @@ def load_state():
             state = json.load(f)
     except (OSError, ValueError):
         state = {}
-    return {'lastExecutionId': None, 'criticalNodes': {}, 'criticalWorkflowNames': {}, **state}
+    return {
+        'lastExecutionId': None,
+        'criticalNodes': {},
+        'criticalWorkflowNames': {},
+        'executionCounts': {},
+        **state,
+    }
+
+
+# Cuantos IDs de ejecucion se recuerdan por workflow para no contarlos dos
+# veces. executions.py reenvia (a proposito, ver process_executions) la
+# misma ejecucion terminal en cada tick de cron mientras haya OTRA ejecucion
+# pendiente del mismo workflow -- por eso un conteo ingenuo (values enviados
+# a Zabbix) queda inflado por reenvios, no refleja ejecuciones reales. Este
+# tope es solo para acotar el crecimiento del set en state.json; alcanza de
+# sobra para deduplicar dentro de una sola ventana de pendiente (minutos),
+# que es el unico escenario real de reenvio.
+MAX_SEEN_IDS_PER_WORKFLOW = 500
+
+
+def register_execution_count(state, workflow_id, exec_id, failed):
+    """Suma 1 al contador acumulado de ejecuciones (y de errores, si
+    `failed`) de `workflow_id` la PRIMERA vez que se ve `exec_id` -- ignora
+    reenvios del mismo id en ticks posteriores. Devuelve (total, errors)
+    ya actualizados, listos para mandar como items de Zabbix.
+    """
+    wf_id = str(workflow_id)
+    counts = state['executionCounts'].setdefault(wf_id, {'total': 0, 'errors': 0, 'seenIds': []})
+    seen = counts['seenIds']
+    if exec_id not in seen:
+        seen.append(exec_id)
+        if len(seen) > MAX_SEEN_IDS_PER_WORKFLOW:
+            del seen[:-MAX_SEEN_IDS_PER_WORKFLOW]
+        counts['total'] += 1
+        if failed:
+            counts['errors'] += 1
+    return counts['total'], counts['errors']
 
 
 def save_state(state):
@@ -185,6 +221,18 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
                 'host': zabbix_host,
                 'key': 'n8n.workflow.status.last[{}]'.format(workflow_id),
                 'value': 1 if failed else 0,
+            })
+
+            total_count, error_count = register_execution_count(state, workflow_id, exec_id, failed)
+            items.append({
+                'host': zabbix_host,
+                'key': 'n8n.workflow.executions.count[{}]'.format(workflow_id),
+                'value': total_count,
+            })
+            items.append({
+                'host': zabbix_host,
+                'key': 'n8n.workflow.executions.errors[{}]'.format(workflow_id),
+                'value': error_count,
             })
 
             if node_timings is not None:

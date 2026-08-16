@@ -171,6 +171,40 @@ zabbix_export:
               key: 'n8n.workflow.error.last[{#WORKFLOW_ID}]'
               value_type: TEXT
               history: 30d
+            - uuid: d59446ab7c924b9fbf753a475f57ce0f
+              name: 'Workflow {#WORKFLOW_NAME} - cantidad de ejecuciones (acumulado)'
+              type: TRAP
+              key: 'n8n.workflow.executions.count[{#WORKFLOW_ID}]'
+              value_type: UNSIGNED
+              history: 90d
+              trends: 365d
+              description: >-
+                Contador acumulado de ejecuciones distintas (deduplicado por
+                execution id, ver register_execution_count en executions.py)
+                desde que este item se empezo a mandar -- no es un
+                historico retroactivo. A diferencia de duration.last, no se
+                infla por los reenvios que hace executions.py mientras hay
+                otra ejecucion pendiente del mismo workflow.
+              tags:
+                - tag: team
+                  value: '{#TEAM}'
+                - tag: criticidad
+                  value: '{#CRITICALITY}'
+            - uuid: c5712a86f4f3457eaca5bf77ca8fa65c
+              name: 'Workflow {#WORKFLOW_NAME} - cantidad de errores (acumulado)'
+              type: TRAP
+              key: 'n8n.workflow.executions.errors[{#WORKFLOW_ID}]'
+              value_type: UNSIGNED
+              history: 90d
+              trends: 365d
+              description: >-
+                Igual que executions.count pero solo cuenta las ejecuciones
+                deduplicadas que terminaron en error.
+              tags:
+                - tag: team
+                  value: '{#TEAM}'
+                - tag: criticidad
+                  value: '{#CRITICALITY}'
           trigger_prototypes:
             - uuid: 374575e5d65349dea19d37a16c5077d1
               name: 'Workflow {#WORKFLOW_NAME}: fallo en la ultima ejecucion'

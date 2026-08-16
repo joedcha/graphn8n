@@ -1,5 +1,6 @@
 .env
 state.json
+capacity_state.json
 __pycache__/
 *.pyc
 *.log
