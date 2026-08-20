@@ -114,6 +114,19 @@ def _run_data(execution):
     return next((c for c in candidates if isinstance(c, dict)), None)
 
 
+def _duration_from_timestamps(execution):
+    started, stopped = execution.get('startedAt'), execution.get('stoppedAt')
+    if not started or not stopped:
+        return None
+    try:
+        from datetime import datetime
+        fmt_started = datetime.fromisoformat(started.replace('Z', '+00:00'))
+        fmt_stopped = datetime.fromisoformat(stopped.replace('Z', '+00:00'))
+        return int((fmt_stopped - fmt_started).total_seconds() * 1000)
+    except (ValueError, TypeError):
+        return None
+
+
 def compute_duration_ms(execution):
     """Duracion total real de la ejecucion.
 
@@ -125,7 +138,24 @@ def compute_duration_ms(execution):
     el span real a partir de `startTime`/`executionTime` de cada nodo en
     runData (min inicio a max fin), y solo se cae a startedAt/stoppedAt si
     no hay runData disponible.
+
+    Excepcion: si la ejecucion es un reintento (`retryOf` seteado), n8n
+    reutiliza en su runData los nodos que ya habian corrido bien en el
+    intento original -- con el `startTime` VIEJO de ese intento -- y solo
+    trae startTime nuevo para los nodos re-ejecutados desde el punto de
+    falla. La reconstruccion min/max de mas abajo no distingue esto: mezcla
+    el inicio del intento original con el fin del reintento y devuelve una
+    duracion inflada que no ocurrio asi en la realidad (confirmado en
+    incidente real 2026-08-19: un reintento de 827ms se reporto como 74
+    minutos). Para reintentos, `startedAt`/`stoppedAt` de la ejecucion SI
+    son confiables (no hay nodos Wait de por medio en un reintento corto),
+    asi que se usan directo, saltandose la reconstruccion por runData.
     """
+    if execution.get('retryOf'):
+        direct = _duration_from_timestamps(execution)
+        if direct is not None:
+            return direct
+
     run_data = _run_data(execution)
     if run_data:
         starts, ends = [], []
@@ -143,16 +173,7 @@ def compute_duration_ms(execution):
         if starts and ends:
             return int(max(ends) - min(starts))
 
-    started, stopped = execution.get('startedAt'), execution.get('stoppedAt')
-    if not started or not stopped:
-        return None
-    try:
-        from datetime import datetime
-        fmt_started = datetime.fromisoformat(started.replace('Z', '+00:00'))
-        fmt_stopped = datetime.fromisoformat(stopped.replace('Z', '+00:00'))
-        return int((fmt_stopped - fmt_started).total_seconds() * 1000)
-    except (ValueError, TypeError):
-        return None
+    return _duration_from_timestamps(execution)
 
 
 def is_failed(execution):
