@@ -114,17 +114,52 @@ def _run_data(execution):
     return next((c for c in candidates if isinstance(c, dict)), None)
 
 
-def _duration_from_timestamps(execution):
-    started, stopped = execution.get('startedAt'), execution.get('stoppedAt')
-    if not started or not stopped:
+def _parse_iso(ts):
+    if not ts:
         return None
     try:
         from datetime import datetime
-        fmt_started = datetime.fromisoformat(started.replace('Z', '+00:00'))
-        fmt_stopped = datetime.fromisoformat(stopped.replace('Z', '+00:00'))
-        return int((fmt_stopped - fmt_started).total_seconds() * 1000)
+        return datetime.fromisoformat(ts.replace('Z', '+00:00'))
     except (ValueError, TypeError):
         return None
+
+
+def _now_utc():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+def _duration_from_timestamps(execution):
+    fmt_started = _parse_iso(execution.get('startedAt'))
+    fmt_stopped = _parse_iso(execution.get('stoppedAt'))
+    if fmt_started is None or fmt_stopped is None:
+        return None
+    return int((fmt_stopped - fmt_started).total_seconds() * 1000)
+
+
+def execution_clock(execution):
+    """Epoch (segundos) del momento real en que la ejecucion termino, para
+    usar como `clock` de los items que se manden a Zabbix por esta ejecucion.
+
+    Sin esto, `send_to_zabbix` usa la hora actual del proceso para TODOS los
+    items de una misma corrida (ver zabbix_sender.py) -- si dos o mas
+    ejecuciones del MISMO workflow caen en la misma corrida (backlog, o
+    varias ejecuciones seguidas dentro del minuto de cron), Zabbix recibe
+    varios valores de `n8n.workflow.status.last[...]` con timestamp
+    identico, y el que "gana" como ultimo valor pasa a depender del orden
+    de envio -- que es de mas-nueva a mas-vieja (ver process_executions),
+    asi que terminaba quedando la ejecucion MAS VIEJA como "ultimo estado"
+    (incidente real 2026-09-16: SHERPA - TIGO - AGENT - PROD volvio a
+    disparar el trigger de fallo despues de una ejecucion exitosa, porque el
+    backlog reenvio la ejecucion exitosa junto con fallos previos y el fallo
+    quedo como ultimo renglon del batch). Usando el timestamp real de cada
+    ejecucion, Zabbix ordena los valores por cuando pasaron de verdad, sin
+    importar en que orden se hayan mandado dentro del batch.
+    """
+    dt = _parse_iso(execution.get('stoppedAt')) or _parse_iso(execution.get('startedAt'))
+    if dt is None:
+        return None
+    return int(dt.timestamp())
 
 
 def compute_duration_ms(execution):
@@ -189,6 +224,22 @@ def is_failed(execution):
 # terminadas en error, asi que hay que guiarse por 'status'.
 NON_TERMINAL_STATUSES = {'waiting', 'running', 'new'}
 
+# Cuanto tiempo se retiene el checkpoint esperando a que una ejecucion
+# pendiente (Wait/running/new) termine, antes de asumir que quedo huerfana
+# (crash, Wait que nunca se reanuda, etc.) y dejar de bloquear el avance del
+# checkpoint por ella. Sin este corte, una sola ejecucion pendiente que nunca
+# termina congela `lastExecutionId` para siempre -- confirmado en real: la
+# ejecucion 2020298 (2026-08-05, ajena al pilot) quedo en 'waiting' y desde
+# entonces CADA corrida de cron reprocesaba y reenviaba a Zabbix el backlog
+# completo de ejecuciones terminales posteriores (cientos por tick) en vez
+# de solo las nuevas -- carga redundante sobre la API de n8n y, combinado
+# con el reenvio sin `clock` real (ver execution_clock), la causa de que
+# triggers de Zabbix "revivieran" con el estado de una ejecucion vieja. Una
+# ejecucion asi de vieja ya no es recuperable igual (para cuando se detecta,
+# n8n probablemente ya no tiene sus timings reales) -- este corte solo evita
+# que bloquee al resto del pipeline indefinidamente.
+MAX_PENDING_AGE_HOURS = float(os.environ.get('MAX_PENDING_AGE_HOURS', '24'))
+
 
 def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_critical=False):
     state = load_state()
@@ -210,12 +261,32 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
                 continue
 
             if summary.get('status') in NON_TERMINAL_STATUSES:
-                # Todavia no termino (ej. pausada en un Wait). No se marca
-                # como vista: hay que evitar que el checkpoint avance mas
-                # alla de este id, para volver a pedirla en la proxima
-                # corrida cuando ya haya terminado de verdad.
-                if min_pending_id is None or exec_id < min_pending_id:
-                    min_pending_id = exec_id
+                started = _parse_iso(summary.get('startedAt'))
+                age_hours = (
+                    (_now_utc() - started).total_seconds() / 3600.0
+                    if started is not None else 0.0
+                )
+                if age_hours <= MAX_PENDING_AGE_HOURS:
+                    # Todavia no termino (ej. pausada en un Wait), y esta
+                    # dentro de la ventana normal de espera. No se marca como
+                    # vista: hay que evitar que el checkpoint avance mas alla
+                    # de este id, para volver a pedirla en la proxima corrida
+                    # cuando ya haya terminado de verdad.
+                    if min_pending_id is None or exec_id < min_pending_id:
+                        min_pending_id = exec_id
+                else:
+                    # Lleva mas de MAX_PENDING_AGE_HOURS sin terminar -- se
+                    # asume huerfana (crash, Wait que nunca se reanuda) y se
+                    # deja de bloquear el checkpoint por ella. Ver comentario
+                    # de MAX_PENDING_AGE_HOURS.
+                    print(
+                        '[executions] ejecucion {} lleva {:.1f}h en estado '
+                        '\'{}\' (> {}h) -- se deja de esperarla, no bloqueara '
+                        'mas el checkpoint.'.format(
+                            exec_id, age_hours, summary.get('status'), MAX_PENDING_AGE_HOURS,
+                        ),
+                        file=sys.stderr,
+                    )
                 continue
 
             if only_critical and str(summary.get('workflowId')) not in critical_workflow_ids:
@@ -232,16 +303,23 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
             failed = is_failed(full)
             node_timings = extract_node_timings(full)
             workflow_id = full.get('workflowId')
+            # Timestamp real de la ejecucion (no la hora en que corre el
+            # cron) -- ver execution_clock. Sin esto, cuando mas de una
+            # ejecucion del mismo workflow cae en la misma corrida, Zabbix
+            # no tiene forma de saber cual paso despues de verdad.
+            exec_clock = execution_clock(full)
 
             items.append({
                 'host': zabbix_host,
                 'key': 'n8n.workflow.duration.last[{}]'.format(workflow_id),
                 'value': duration_ms if duration_ms is not None else 0,
+                'clock': exec_clock,
             })
             items.append({
                 'host': zabbix_host,
                 'key': 'n8n.workflow.status.last[{}]'.format(workflow_id),
                 'value': 1 if failed else 0,
+                'clock': exec_clock,
             })
 
             total_count, error_count = register_execution_count(state, workflow_id, exec_id, failed)
@@ -249,11 +327,13 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
                 'host': zabbix_host,
                 'key': 'n8n.workflow.executions.count[{}]'.format(workflow_id),
                 'value': total_count,
+                'clock': exec_clock,
             })
             items.append({
                 'host': zabbix_host,
                 'key': 'n8n.workflow.executions.errors[{}]'.format(workflow_id),
                 'value': error_count,
+                'clock': exec_clock,
             })
 
             if node_timings is not None:
@@ -261,6 +341,7 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
                     'host': zabbix_host,
                     'key': 'n8n.workflow.nodes.timing[{}]'.format(workflow_id),
                     'value': json.dumps(node_timings, ensure_ascii=False),
+                    'clock': exec_clock,
                 })
 
                 if str(workflow_id) in critical_workflow_ids:
@@ -271,6 +352,7 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
                             'host': zabbix_host,
                             'key': 'n8n.node.duration[{},{}]'.format(workflow_id, nt['node']),
                             'value': nt['ms'] if nt['ms'] is not None else 0,
+                            'clock': exec_clock,
                         })
                         known.add(nt['node'])
                     state['criticalNodes'][wf_id] = sorted(known)
@@ -285,6 +367,7 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
                         'node': failed_node['node'] if failed_node else None,
                         'message': (failed_node or {}).get('errorMessage') or 'error sin detalle de nodo',
                     }, ensure_ascii=False),
+                    'clock': exec_clock,
                 })
 
             if not newest_id or exec_id > newest_id:
