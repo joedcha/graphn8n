@@ -323,17 +323,29 @@ def process_executions(zabbix_host, zabbix_config, critical_workflow_ids, only_c
             })
 
             total_count, error_count = register_execution_count(state, workflow_id, exec_id, failed)
+            # OJO: a diferencia de los items de arriba, estos SI van con la
+            # hora de envio (sin 'clock' -> zabbix_sender usa el momento
+            # actual), no con exec_clock. Son acumuladores monotonicos --
+            # el valor representa "cuantas llevamos contadas hasta ahora
+            # que lo procesamos", no algo que haya pasado en el momento de
+            # la ejecucion. Si se les pone el clock real, un catch-up de
+            # backlog (ver execution_clock) inserta puntos historicos con
+            # un valor YA acumulado mas alto que puntos reales posteriores
+            # ya guardados -- rompe la forma monotonica del grafico y
+            # corrompe el reducer "Difference" usado en el panel "Cantidad
+            # de peticiones (rango seleccionado)" para consultas sobre ese
+            # rango. El panel "Peticiones y errores en el tiempo" tambien
+            # asume la cadencia de envio real (ver CLAUDE.md, fix del
+            # 2026-08-18), no la de ocurrencia de cada ejecucion.
             items.append({
                 'host': zabbix_host,
                 'key': 'n8n.workflow.executions.count[{}]'.format(workflow_id),
                 'value': total_count,
-                'clock': exec_clock,
             })
             items.append({
                 'host': zabbix_host,
                 'key': 'n8n.workflow.executions.errors[{}]'.format(workflow_id),
                 'value': error_count,
-                'clock': exec_clock,
             })
 
             if node_timings is not None:
